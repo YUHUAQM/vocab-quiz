@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>单词词组背诵</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; }
+        .container { max-width: 700px; margin: 0 auto; padding: 20px; }
+        h1 { text-align: center; margin: 20px 0; font-size: 28px; color: #e94560; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab { flex: 1; padding: 12px; text-align: center; background: #16213e; border: 2px solid #0f3460; border-radius: 8px; cursor: pointer; font-size: 16px; transition: all 0.3s; }
+        .tab:hover { border-color: #e94560; }
+        .tab.active { background: #e94560; border-color: #e94560; }
+        .panel { display: none; }
+        .panel.active { display: block; }
+        textarea { width: 100%; height: 200px; padding: 12px; background: #16213e; color: #eee; border: 2px solid #0f3460; border-radius: 8px; font-size: 14px; resize: vertical; font-family: inherit; }
+        textarea:focus { outline: none; border-color: #e94560; }
+        .hint { color: #888; font-size: 13px; margin: 8px 0 16px; }
+        .btn { padding: 12px 24px; background: #e94560; color: #fff; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; margin-top: 10px; transition: background 0.3s; }
+        .btn:hover { background: #c73650; }
+        .btn:disabled { background: #555; cursor: not-allowed; }
+        .btn-secondary { background: #0f3460; }
+        .btn-secondary:hover { background: #1a4a8a; }
+        .quiz-area { text-align: center; padding: 40px 20px; }
+        .word-display { font-size: 36px; font-weight: bold; margin: 30px 0; color: #53d8fb; min-height: 50px; }
+        .word-display.cn { color: #f5a623; }
+        .progress { font-size: 14px; color: #888; margin-bottom: 20px; }
+        .input-area { margin: 20px 0; }
+        .input-area input { width: 100%; max-width: 400px; padding: 14px 18px; font-size: 20px; background: #16213e; color: #eee; border: 2px solid #0f3460; border-radius: 8px; text-align: center; }
+        .input-area input:focus { outline: none; border-color: #e94560; }
+        .result { font-size: 20px; margin: 15px 0; min-height: 30px; }
+        .result.correct { color: #4ecdc4; }
+        .result.wrong { color: #e94560; }
+        .score-bar { display: flex; justify-content: center; gap: 30px; margin: 20px 0; font-size: 16px; }
+        .score-bar span { padding: 6px 16px; background: #16213e; border-radius: 20px; }
+        .word-list { max-height: 400px; overflow-y: auto; }
+        .word-item { display: flex; justify-content: space-between; padding: 10px 14px; background: #16213e; margin-bottom: 4px; border-radius: 6px; align-items: center; }
+        .word-item .en { color: #53d8fb; flex: 1; }
+        .word-item .cn { color: #f5a623; flex: 1; text-align: right; }
+        .word-item .del { color: #e94560; cursor: pointer; margin-left: 10px; font-size: 18px; }
+        .word-item .del:hover { color: #ff6b6b; }
+        .stats { text-align: center; margin: 20px 0; color: #888; }
+        .mode-btns { display: flex; gap: 10px; margin: 15px 0; }
+        .mode-btn { flex: 1; padding: 10px; text-align: center; background: #16213e; border: 2px solid #0f3460; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .mode-btn:hover { border-color: #e94560; }
+        .mode-btn.active { background: #0f3460; border-color: #e94560; }
+        .empty { text-align: center; color: #555; padding: 40px; font-size: 16px; }
+        .shake { animation: shake 0.4s; }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📝 单词词组背诵</h1>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('import')">📥 导入词组</div>
+            <div class="tab" onclick="switchTab('quiz')">🎯 开始背诵</div>
+            <div class="tab" onclick="switchTab('list')">📋 词组列表</div>
+        </div>
+
+        <!-- 导入面板 -->
+        <div id="import-panel" class="panel active">
+            <textarea id="input-area" placeholder="每行一个词组，格式：英文 中文&#10;例如：&#10;good morning 早上好&#10;thank you 谢谢&#10;how are you 你好吗"></textarea>
+            <p class="hint">每行一个，英文和中文之间用空格隔开。支持粘贴多行内容。</p>
+            <button class="btn" onclick="importWords()">📥 导入词组</button>
+            <button class="btn btn-secondary" onclick="clearAll()" style="margin-top:8px">🗑️ 清空所有词组</button>
+            <div class="stats" id="import-stats"></div>
+        </div>
+
+        <!-- 背诵面板 -->
+        <div id="quiz-panel" class="panel">
+            <div id="quiz-empty" class="empty">还没有词组，请先导入</div>
+            <div id="quiz-content" style="display:none">
+                <div class="progress" id="progress"></div>
+                <div class="score-bar">
+                    <span>✅ 正确: <b id="correct-count">0</b></span>
+                    <span>❌ 错误: <b id="wrong-count">0</b></span>
+                </div>
+                <div class="mode-btns">
+                    <div class="mode-btn active" id="mode-en2cn" onclick="setMode('en2cn')">英 → 中</div>
+                    <div class="mode-btn" id="mode-cn2en" onclick="setMode('cn2en')">中 → 英</div>
+                    <div class="mode-btn" id="mode-mix" onclick="setMode('mix')">🔀 混合</div>
+                </div>
+                <div class="quiz-area">
+                    <div class="word-display" id="word-display"></div>
+                    <div class="input-area">
+                        <input type="text" id="answer-input" placeholder="输入答案..." autocomplete="off" onkeydown="if(event.key==='Enter')checkAnswer()">
+                    </div>
+                    <div class="result" id="result"></div>
+                    <button class="btn" id="check-btn" onclick="checkAnswer()">确认</button>
+                    <button class="btn btn-secondary" id="next-btn" onclick="nextWord()" style="display:none">下一题 →</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 列表面板 -->
+        <div id="list-panel" class="panel">
+            <div id="list-empty" class="empty">还没有词组</div>
+            <div id="list-content" class="word-list" style="display:none"></div>
+            <div class="stats" id="list-stats"></div>
+        </div>
+    </div>
+
+    <script>
+        let words = JSON.parse(localStorage.getItem('vocab_words') || '[]');
+        let currentMode = 'en2cn';
+        let currentWord = null;
+        let correctCount = 0;
+        let wrongCount = 0;
+        let quizIndex = 0;
+        let quizOrder = [];
+        let answered = false;
+
+        function saveWords() {
+            localStorage.setItem('vocab_words', JSON.stringify(words));
+        }
+
+        function switchTab(name) {
+            document.querySelectorAll('.tab').forEach((t, i) => {
+                t.classList.toggle('active', ['import','quiz','list'][i] === name);
+            });
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            document.getElementById(name + '-panel').classList.add('active');
+            if (name === 'quiz') initQuiz();
+            if (name === 'list') renderList();
+            if (name === 'import') updateImportStats();
+        }
+
+        function importWords() {
+            const text = document.getElementById('input-area').value.trim();
+            if (!text) return;
+            const lines = text.split('\n').filter(l => l.trim());
+            let count = 0;
+            lines.forEach(line => {
+                const parts = line.trim().split(/\s+/);
+                if (parts.length >= 2) {
+                    const en = parts.slice(0, Math.ceil(parts.length / 2)).join(' ');
+                    const cn = parts.slice(Math.ceil(parts.length / 2)).join(' ');
+                    if (!words.some(w => w.en === en)) {
+                        words.push({ en, cn });
+                        count++;
+                    }
+                }
+            });
+            saveWords();
+            document.getElementById('input-area').value = '';
+            alert(`成功导入 ${count} 个词组（共 ${words.length} 个）`);
+            updateImportStats();
+        }
+
+        function updateImportStats() {
+            document.getElementById('import-stats').textContent = words.length > 0 ? `已存储 ${words.length} 个词组` : '';
+        }
+
+        function clearAll() {
+            if (confirm('确定要清空所有词组吗？')) {
+                words = [];
+                saveWords();
+                updateImportStats();
+                alert('已清空');
+            }
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('mode-' + mode).classList.add('active');
+            initQuiz();
+        }
+
+        function initQuiz() {
+            if (words.length === 0) {
+                document.getElementById('quiz-empty').style.display = 'block';
+                document.getElementById('quiz-content').style.display = 'none';
+                return;
+            }
+            document.getElementById('quiz-empty').style.display = 'none';
+            document.getElementById('quiz-content').style.display = 'block';
+            correctCount = 0;
+            wrongCount = 0;
+            quizIndex = 0;
+            quizOrder = [...Array(words.length).keys()].sort(() => Math.random() - 0.5);
+            updateScore();
+            nextWord();
+        }
+
+        function nextWord() {
+            answered = false;
+            document.getElementById('result').textContent = '';
+            document.getElementById('result').className = 'result';
+            document.getElementById('answer-input').value = '';
+            document.getElementById('answer-input').disabled = false;
+            document.getElementById('answer-input').focus();
+            document.getElementById('check-btn').style.display = '';
+            document.getElementById('next-btn').style.display = 'none';
+
+            if (quizIndex >= quizOrder.length) {
+                document.getElementById('word-display').textContent = '🎉 完成！';
+                document.getElementById('word-display').className = 'word-display';
+                document.getElementById('progress').textContent = `正确率: ${Math.round(correctCount / (correctCount + wrongCount) * 100) || 0}%`;
+                document.getElementById('check-btn').style.display = 'none';
+                document.getElementById('answer-input').disabled = true;
+                return;
+            }
+
+            currentWord = words[quizOrder[quizIndex]];
+            document.getElementById('progress').textContent = `${quizIndex + 1} / ${quizOrder.length}`;
+
+            let showEn;
+            if (currentMode === 'mix') {
+                showEn = Math.random() < 0.5;
+            } else {
+                showEn = currentMode === 'en2cn';
+            }
+
+            const display = document.getElementById('word-display');
+            if (showEn) {
+                display.textContent = currentWord.en;
+                display.className = 'word-display';
+                display.dataset.type = 'en';
+            } else {
+                display.textContent = currentWord.cn;
+                display.className = 'word-display cn';
+                display.dataset.type = 'cn';
+            }
+        }
+
+        function checkAnswer() {
+            if (answered) return;
+            const input = document.getElementById('answer-input').value.trim();
+            if (!input) return;
+            answered = true;
+
+            const type = document.getElementById('word-display').dataset.type;
+            const correct = type === 'en' ? currentWord.cn : currentWord.en;
+            const isCorrect = input.toLowerCase() === correct.toLowerCase();
+
+            const result = document.getElementById('result');
+            if (isCorrect) {
+                result.textContent = '✅ 正确！';
+                result.className = 'result correct';
+                correctCount++;
+            } else {
+                result.innerHTML = `❌ 错误！正确答案：<b>${correct}</b>`;
+                result.className = 'result wrong';
+                wrongCount++;
+                document.getElementById('answer-input').classList.add('shake');
+                setTimeout(() => document.getElementById('answer-input').classList.remove('shake'), 400);
+            }
+
+            updateScore();
+            quizIndex++;
+            document.getElementById('check-btn').style.display = 'none';
+            document.getElementById('next-btn').style.display = '';
+            document.getElementById('answer-input').disabled = true;
+        }
+
+        function updateScore() {
+            document.getElementById('correct-count').textContent = correctCount;
+            document.getElementById('wrong-count').textContent = wrongCount;
+        }
+
+        function renderList() {
+            const content = document.getElementById('list-content');
+            const empty = document.getElementById('list-empty');
+            if (words.length === 0) {
+                empty.style.display = 'block';
+                content.style.display = 'none';
+                return;
+            }
+            empty.style.display = 'none';
+            content.style.display = 'block';
+            content.innerHTML = words.map((w, i) => `
+                <div class="word-item">
+                    <span class="en">${w.en}</span>
+                    <span class="cn">${w.cn}</span>
+                    <span class="del" onclick="deleteWord(${i})">✕</span>
+                </div>
+            `).join('');
+            document.getElementById('list-stats').textContent = `共 ${words.length} 个词组`;
+        }
+
+        function deleteWord(i) {
+            if (confirm(`删除 "${words[i].en}" ?`)) {
+                words.splice(i, 1);
+                saveWords();
+                renderList();
+            }
+        }
+
+        updateImportStats();
+    </script>
+</body>
+</html>

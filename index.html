@@ -47,6 +47,21 @@
         .mode-btn:hover { border-color: #e94560; }
         .mode-btn.active { background: #0f3460; border-color: #e94560; }
         .empty { text-align: center; color: #555; padding: 40px; font-size: 16px; }
+        .group-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #0f3460; margin: 10px 0 4px; border-radius: 6px; cursor: pointer; }
+        .group-header:hover { background: #1a4a8a; }
+        .group-header .name { font-weight: bold; color: #53d8fb; font-size: 16px; }
+        .group-header .count { color: #888; font-size: 13px; }
+        .group-header .del-group { color: #e94560; cursor: pointer; font-size: 18px; margin-left: 10px; }
+        .group-words { margin-bottom: 8px; }
+        .group-select { display: flex; flex-wrap: wrap; gap: 8px; margin: 15px 0; }
+        .group-chip { padding: 8px 16px; background: #16213e; border: 2px solid #0f3460; border-radius: 20px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .group-chip:hover { border-color: #e94560; }
+        .group-chip.active { background: #e94560; border-color: #e94560; color: #fff; }
+        .group-chip.all { border-style: dashed; }
+        .group-input { display: flex; gap: 8px; margin-bottom: 12px; }
+        .group-input input { flex: 1; padding: 10px 14px; background: #16213e; color: #eee; border: 2px solid #0f3460; border-radius: 8px; font-size: 14px; }
+        .group-input input:focus { outline: none; border-color: #e94560; }
+        .group-input .btn { width: auto; margin-top: 0; padding: 10px 18px; font-size: 14px; }
         .shake { animation: shake 0.4s; }
         @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
     </style>
@@ -63,8 +78,14 @@
 
         <!-- 导入面板 -->
         <div id="import-panel" class="panel active">
-            <textarea id="input-area" placeholder="每行一个词组，格式：英文 中文&#10;例如：&#10;good morning 早上好&#10;thank you 谢谢&#10;how are you 你好吗"></textarea>
-            <p class="hint">每行一个，英文和中文之间用空格隔开。支持粘贴多行内容。</p>
+            <div class="group-input">
+                <input type="text" id="group-name" placeholder="分组名称（如：Unit1、CET4）">
+                <button class="btn" onclick="addGroup()">➕ 新建</button>
+            </div>
+            <p class="hint">选择分组后导入词组：</p>
+            <div class="group-select" id="import-group-select"></div>
+            <textarea id="input-area" placeholder="每行一个词组，格式：英文 中文&#10;例如：&#10;good morning 早上好&#10;thank you 谢谢&#10;nomadic ethnic groups 游牧民族"></textarea>
+            <p class="hint">每行一个，英文和中文之间用空格隔开。</p>
             <button class="btn" onclick="importWords()">📥 导入词组</button>
             <button class="btn btn-secondary" onclick="clearAll()" style="margin-top:8px">🗑️ 清空所有词组</button>
             <div class="stats" id="import-stats"></div>
@@ -73,6 +94,10 @@
         <!-- 背诵面板 -->
         <div id="quiz-panel" class="panel">
             <div id="quiz-empty" class="empty">还没有词组，请先导入</div>
+            <div id="quiz-group-select" style="display:none">
+                <p style="color:#888;margin-bottom:8px">选择要背诵的分组：</p>
+                <div class="group-select" id="quiz-groups"></div>
+            </div>
             <div id="quiz-content" style="display:none">
                 <div class="progress" id="progress"></div>
                 <div class="score-bar">
@@ -99,7 +124,7 @@
         <!-- 列表面板 -->
         <div id="list-panel" class="panel">
             <div id="list-empty" class="empty">还没有词组</div>
-            <div id="list-content" class="word-list" style="display:none"></div>
+            <div id="list-content" style="display:none"></div>
             <button class="btn" id="clear-list-btn" onclick="clearAll()" style="display:none">🗑️ 一键清空所有词组</button>
             <div class="stats" id="list-stats"></div>
         </div>
@@ -107,6 +132,7 @@
 
     <script>
         let words = JSON.parse(localStorage.getItem('vocab_words') || '[]');
+        let groups = JSON.parse(localStorage.getItem('vocab_groups') || '["默认"]');
         let currentMode = 'en2cn';
         let currentWord = null;
         let correctCount = 0;
@@ -114,9 +140,15 @@
         let quizIndex = 0;
         let quizOrder = [];
         let answered = false;
+        let selectedQuizGroup = 'all';
+        let selectedImportGroup = groups[0] || '默认';
 
-        function saveWords() {
+        // 兼容旧数据：给没有group的词加上默认group
+        words.forEach(w => { if (!w.group) w.group = '默认'; });
+
+        function save() {
             localStorage.setItem('vocab_words', JSON.stringify(words));
+            localStorage.setItem('vocab_groups', JSON.stringify(groups));
         }
 
         function switchTab(name) {
@@ -127,9 +159,49 @@
             document.getElementById(name + '-panel').classList.add('active');
             if (name === 'quiz') initQuiz();
             if (name === 'list') renderList();
-            if (name === 'import') updateImportStats();
+            if (name === 'import') { renderImportGroups(); updateImportStats(); }
         }
 
+        // ========== 分组管理 ==========
+        function addGroup() {
+            const name = document.getElementById('group-name').value.trim();
+            if (!name) return;
+            if (groups.includes(name)) { alert('分组已存在'); return; }
+            groups.push(name);
+            selectedImportGroup = name;
+            save();
+            document.getElementById('group-name').value = '';
+            renderImportGroups();
+        }
+
+        function renderImportGroups() {
+            const el = document.getElementById('import-group-select');
+            el.innerHTML = groups.map(g => {
+                const active = g === selectedImportGroup ? 'active' : '';
+                const count = words.filter(w => w.group === g).length;
+                return `<div class="group-chip ${active}" onclick="selectImportGroup('${g}')">${g} (${count})</div>`;
+            }).join('');
+        }
+
+        function selectImportGroup(g) {
+            selectedImportGroup = g;
+            renderImportGroups();
+        }
+
+        function deleteGroup(g) {
+            if (groups.length <= 1) { alert('至少保留一个分组'); return; }
+            const count = words.filter(w => w.group === g).length;
+            if (!confirm(`删除分组"${g}"？（含 ${count} 个词组）`)) return;
+            words = words.filter(w => w.group !== g);
+            groups = groups.filter(gr => gr !== g);
+            if (selectedImportGroup === g) selectedImportGroup = groups[0];
+            if (selectedQuizGroup === g) selectedQuizGroup = 'all';
+            save();
+            renderList();
+            renderImportGroups();
+        }
+
+        // ========== 导入 ==========
         function importWords() {
             const text = document.getElementById('input-area').value.trim();
             if (!text) return;
@@ -140,50 +212,82 @@
                 if (match) {
                     const en = match[1].trim();
                     const cn = match[2].trim();
-                    if (en && cn && !words.some(w => w.en === en)) {
-                        words.push({ en, cn });
+                    if (en && cn && !words.some(w => w.en === en && w.group === selectedImportGroup)) {
+                        words.push({ en, cn, group: selectedImportGroup });
                         count++;
                     }
                 }
             });
-            saveWords();
+            save();
             document.getElementById('input-area').value = '';
-            alert(`成功导入 ${count} 个词组（共 ${words.length} 个）`);
+            alert(`成功导入 ${count} 个词组到"${selectedImportGroup}"（共 ${words.length} 个）`);
+            renderImportGroups();
             updateImportStats();
         }
 
         function updateImportStats() {
-            document.getElementById('import-stats').textContent = words.length > 0 ? `已存储 ${words.length} 个词组` : '';
+            document.getElementById('import-stats').textContent = words.length > 0 ? `已存储 ${words.length} 个词组，${groups.length} 个分组` : '';
         }
 
         function clearAll() {
             if (confirm('确定要清空所有词组吗？')) {
                 words = [];
-                saveWords();
+                save();
+                renderList();
+                renderImportGroups();
                 updateImportStats();
                 alert('已清空');
             }
         }
 
+        // ========== 背诵 ==========
         function setMode(mode) {
             currentMode = mode;
             document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
             document.getElementById('mode-' + mode).classList.add('active');
-            initQuiz();
+            startQuiz();
         }
 
         function initQuiz() {
             if (words.length === 0) {
                 document.getElementById('quiz-empty').style.display = 'block';
                 document.getElementById('quiz-content').style.display = 'none';
+                document.getElementById('quiz-group-select').style.display = 'none';
                 return;
             }
             document.getElementById('quiz-empty').style.display = 'none';
+            document.getElementById('quiz-group-select').style.display = '';
+            renderQuizGroups();
+        }
+
+        function renderQuizGroups() {
+            const el = document.getElementById('quiz-groups');
+            const allActive = selectedQuizGroup === 'all' ? 'active' : '';
+            const total = words.length;
+            let html = `<div class="group-chip all ${allActive}" onclick="selectQuizGroup('all')">全部 (${total})</div>`;
+            groups.forEach(g => {
+                const active = g === selectedQuizGroup ? 'active' : '';
+                const count = words.filter(w => w.group === g).length;
+                html += `<div class="group-chip ${active}" onclick="selectQuizGroup('${g}')">${g} (${count})</div>`;
+            });
+            el.innerHTML = html;
+        }
+
+        function selectQuizGroup(g) {
+            selectedQuizGroup = g;
+            renderQuizGroups();
+            startQuiz();
+        }
+
+        function startQuiz() {
+            const pool = selectedQuizGroup === 'all' ? words : words.filter(w => w.group === selectedQuizGroup);
+            if (pool.length === 0) { alert('该分组没有词组'); return; }
             document.getElementById('quiz-content').style.display = 'block';
             correctCount = 0;
             wrongCount = 0;
             quizIndex = 0;
-            quizOrder = [...Array(words.length).keys()].sort(() => Math.random() - 0.5);
+            const indices = [...Array(pool.length).keys()].sort(() => Math.random() - 0.5);
+            quizOrder = indices.map(i => words.indexOf(pool[i]));
             updateScore();
             nextWord();
         }
@@ -264,35 +368,57 @@
             document.getElementById('wrong-count').textContent = wrongCount;
         }
 
+        // ========== 词组列表 ==========
         function renderList() {
             const content = document.getElementById('list-content');
             const empty = document.getElementById('list-empty');
             if (words.length === 0) {
                 empty.style.display = 'block';
                 content.style.display = 'none';
+                document.getElementById('clear-list-btn').style.display = 'none';
                 return;
             }
             empty.style.display = 'none';
             content.style.display = 'block';
-            content.innerHTML = words.map((w, i) => `
-                <div class="word-item">
-                    <span class="en">${w.en}</span>
-                    <span class="cn">${w.cn}</span>
-                    <span class="del" onclick="deleteWord(${i})">✕</span>
-                </div>
-            `).join('');
-            document.getElementById('list-stats').textContent = `共 ${words.length} 个词组`;
-            document.getElementById('clear-list-btn').style.display = words.length > 0 ? '' : 'none';
+            document.getElementById('clear-list-btn').style.display = '';
+
+            let html = '';
+            groups.forEach(g => {
+                const gWords = words.map((w, i) => ({...w, idx: i})).filter(w => w.group === g);
+                if (gWords.length === 0) return;
+                html += `<div class="group-header" onclick="toggleGroup(this)">
+                    <span><span class="name">${g}</span> <span class="count">${gWords.length} 个词组</span></span>
+                    <span class="del-group" onclick="event.stopPropagation();deleteGroup('${g}')">🗑️</span>
+                </div>`;
+                html += `<div class="group-words">`;
+                gWords.forEach(w => {
+                    html += `<div class="word-item">
+                        <span class="en">${w.en}</span>
+                        <span class="cn">${w.cn}</span>
+                        <span class="del" onclick="deleteWord(${w.idx})">✕</span>
+                    </div>`;
+                });
+                html += `</div>`;
+            });
+            content.innerHTML = html;
+            document.getElementById('list-stats').textContent = `共 ${words.length} 个词组，${groups.length} 个分组`;
+        }
+
+        function toggleGroup(el) {
+            const words = el.nextElementSibling;
+            words.style.display = words.style.display === 'none' ? '' : 'none';
         }
 
         function deleteWord(i) {
             if (confirm(`删除 "${words[i].en}" ?`)) {
                 words.splice(i, 1);
-                saveWords();
+                save();
                 renderList();
+                renderImportGroups();
             }
         }
 
+        renderImportGroups();
         updateImportStats();
     </script>
 </body>

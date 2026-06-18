@@ -100,6 +100,7 @@
         <div id="list-panel" class="panel">
             <div id="list-empty" class="empty">还没有词组</div>
             <div id="list-content" class="word-list" style="display:none"></div>
+            <button class="btn" id="clear-list-btn" onclick="clearAll()" style="display:none">🗑️ 一键清空所有词组</button>
             <div class="stats" id="list-stats"></div>
         </div>
     </div>
@@ -281,6 +282,7 @@
                 </div>
             `).join('');
             document.getElementById('list-stats').textContent = `共 ${words.length} 个词组`;
+            document.getElementById('clear-list-btn').style.display = words.length > 0 ? '' : 'none';
         }
 
         function deleteWord(i) {
